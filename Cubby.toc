@@ -6,7 +6,7 @@
 ## Title: Cubby
 ## Notes: Raid readiness — track consumables in your bags, and world buffs on your character. Click the bottom strip to add by name; on-screen tracker shows what's missing.
 ## Author: salvatore
-## Version: 1.0.5
+## Version: 1.0.6
 ## DefaultState: enabled
 ## SavedVariablesPerCharacter: CubbyDB
 ## IconTexture: Interface\AddOns\Cubby\Cubby.tga
