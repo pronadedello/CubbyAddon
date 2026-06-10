@@ -1,0 +1,17 @@
+# CurseForge / BigWigs packager configuration.
+# https://github.com/BigWigsMods/packager
+#
+# Strips the dev/installer tooling from the zip so the published addon
+# contains only the files WoW actually loads (plus the README for context).
+package-as: Cubby
+
+ignore:
+  - .devcontainer
+  - CLAUDE.md
+  - gen_manifest.py
+  - install.ps1
+  - server.sh
+  - manifest.json
+  - Cubby.png
+  - Cubby-256.png
+  - Cubby-512.png

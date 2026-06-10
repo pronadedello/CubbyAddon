@@ -1,0 +1,129 @@
+name: Release
+
+# Triggered when a tag of the form v1.2.3 is pushed. Builds a release
+# zip, attaches it to a GitHub Release, and uploads to CurseForge if
+# the project ID is configured.
+#
+# What lives where:
+#   - Cubby.toc             Version (must match the tag) + Interface
+#                           number (the action derives the CurseForge
+#                           game-version name from this — bump Interface
+#                           and the CurseForge listing tracks it for
+#                           free).
+#   - GitHub repo Variables CF_PROJECT_ID  — numeric ID from the project
+#                           URL on CurseForge. Acts as the on/off switch
+#                           for the upload step.
+#   - GitHub repo Secrets   CF_API_TOKEN   — token from
+#                           https://legacy.curseforge.com/account/api-tokens
+#
+# How to ship a new version:
+#   1. Bump `## Version:` in Cubby.toc.
+#   2. Commit. Tag it: `git tag -a v1.2.0 -m "..."`.
+#   3. Push: `git push origin main --follow-tags`.
+#   4. The workflow builds, attaches a zip to the GitHub Release, and
+#      uploads to CurseForge if CF_PROJECT_ID is set.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'      # standard releases — v1.2.3
+      - 'v*.*.*-*'    # pre-releases   — v2.0.0-beta.1, v2.0.0-rc1, etc.
+
+permissions:
+  contents: write   # required to create the GitHub Release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read TOC + verify tag matches Version
+        id: toc
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(grep -E '^## Version:' Cubby.toc | awk '{print $NF}')
+          interface=$(grep -E '^## Interface:' Cubby.toc | awk '{print $NF}')
+          if [[ "$tag" != "$version" ]]; then
+            echo "::error::tag v$tag does not match TOC Version $version"
+            exit 1
+          fi
+          # Pre-release detection — semver convention says any "-..."
+          # suffix on the version is a pre-release (beta, rc, alpha,
+          # etc.). Drives both the GitHub Release "prerelease" flag
+          # and the CurseForge releaseType. Stable releases stay as
+          # releaseType=release; anything with a dash goes to beta.
+          if [[ "$version" == *-* ]]; then
+            cf_release_type="beta"
+            is_prerelease="true"
+          else
+            cf_release_type="release"
+            is_prerelease="false"
+          fi
+          # Convert e.g. 11508 → "1.15." major.minor prefix. The upload
+          # step matches every CurseForge game version starting with
+          # this prefix (1.15.0 through 1.15.8 currently), so the addon
+          # is listed compatible with every patch in the line. Bump the
+          # Interface number when WoW ships a new patch and the upload
+          # picks it up automatically — no GitHub variable to maintain.
+          game_version_prefix=$(awk -v n="$interface" 'BEGIN{ printf "%d.%d.", n/10000, int(n/100)%100 }')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "game_version_prefix=$game_version_prefix" >> "$GITHUB_OUTPUT"
+          echo "cf_release_type=$cf_release_type" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=$is_prerelease" >> "$GITHUB_OUTPUT"
+          echo "Interface=$interface  →  CurseForge game versions starting with '$game_version_prefix'"
+          echo "Release type: $cf_release_type  (prerelease=$is_prerelease)"
+
+      - name: Build zip
+        run: |
+          chmod +x build.sh
+          ./build.sh "$RUNNER_TEMP"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ runner.temp }}/Cubby-${{ steps.toc.outputs.version }}.zip
+          generate_release_notes: true
+          prerelease: ${{ steps.toc.outputs.is_prerelease == 'true' }}
+
+      # Skips silently if CF_PROJECT_ID isn't configured on the repo
+      # (vars are allowed in `if:` conditions; secrets aren't, which is
+      # why the project ID lives as a Variable not a Secret).
+      - name: Upload to CurseForge
+        if: ${{ vars.CF_PROJECT_ID != '' }}
+        env:
+          CF_API_TOKEN:           ${{ secrets.CF_API_TOKEN }}
+          CF_PROJECT_ID:          ${{ vars.CF_PROJECT_ID }}
+          CF_GAME_VERSION_PREFIX: ${{ steps.toc.outputs.game_version_prefix }}
+          CF_RELEASE_TYPE:        ${{ steps.toc.outputs.cf_release_type }}
+          ZIP_PATH:               ${{ runner.temp }}/Cubby-${{ steps.toc.outputs.version }}.zip
+        run: |
+          set -euo pipefail
+          if [[ -z "$CF_API_TOKEN" ]]; then
+            echo "::error::CF_PROJECT_ID is set but CF_API_TOKEN secret is missing."
+            exit 1
+          fi
+          # Match every CurseForge game version whose name starts with
+          # the major.minor prefix (e.g. "1.15." → 1.15.0 .. 1.15.8).
+          # The addon listing then shows compatible with every patch in
+          # the line, not just the exact one the TOC was bumped to.
+          ids=$(curl -fsS -H "X-Api-Token: $CF_API_TOKEN" \
+            "https://wow.curseforge.com/api/game/versions" \
+            | jq -c --arg prefix "$CF_GAME_VERSION_PREFIX" '[.[] | select(.name | startswith($prefix)) | .id]')
+          if [[ "$ids" == "[]" ]]; then
+            echo "::error::No CurseForge game versions matched prefix '$CF_GAME_VERSION_PREFIX'. Check the Interface number in the TOC."
+            exit 1
+          fi
+          echo "Tagging release with CurseForge game version IDs: $ids"
+          metadata=$(jq -n \
+            --arg ct "Tagged release $GITHUB_REF_NAME — see GitHub Releases for notes." \
+            --arg rt "$CF_RELEASE_TYPE" \
+            --argjson gv "$ids" \
+            '{changelog: $ct, changelogType: "markdown", releaseType: $rt, gameVersions: $gv}')
+          curl -fsS -X POST \
+            -H "X-Api-Token: $CF_API_TOKEN" \
+            -F "metadata=$metadata" \
+            -F "file=@$ZIP_PATH" \
+            "https://wow.curseforge.com/api/projects/$CF_PROJECT_ID/upload-file"

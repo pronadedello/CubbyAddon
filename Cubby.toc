@@ -1,0 +1,20 @@
+## Interface: 11508
+## Interface-Vanilla: 11508
+## Interface-Cata: 40402
+## Interface-Mists: 50500
+## Interface-Retail: 120001
+## Title: Cubby
+## Notes: Raid readiness — track consumables in your bags, and world buffs on your character. Click the bottom strip to add by name; on-screen tracker shows what's missing.
+## Author: salvatore
+## Version: 1.0.5
+## DefaultState: enabled
+## SavedVariablesPerCharacter: CubbyDB
+## IconTexture: Interface\AddOns\Cubby\Cubby.tga
+
+Cubby.lua
+Buffs.lua
+UI.lua
+Tracker.lua
+Minimap.lua
+Restock.lua
+Bank.lua

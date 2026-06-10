@@ -1,0 +1,42 @@
+{
+  "name": "Cubby",
+  "version": "1.0.1-20260610213100",
+  "files": [
+    {
+      "name": "Cubby.toc",
+      "hash": "14d78364a5ca8f7cf05f3ee4a65243395db5ac4f3924421333308b99308c9c89"
+    },
+    {
+      "name": "Cubby.lua",
+      "hash": "dd0fd0daa480101270017c885ffaf912b694355d432aa00b104bf722e7573620"
+    },
+    {
+      "name": "Buffs.lua",
+      "hash": "79bcf3e6ebd1042042f93e32473174050ed485c4e08b5650fa9e020f77433cab"
+    },
+    {
+      "name": "UI.lua",
+      "hash": "3d4ccd9c2431048caca45eb87f1d548fa239481192419d615ca3cd3e989bffa1"
+    },
+    {
+      "name": "Tracker.lua",
+      "hash": "8cc90664da1e54f9ae2891c8d3434cd76a56da452222ffd5f267d9a95acbd2a5"
+    },
+    {
+      "name": "Minimap.lua",
+      "hash": "30ad8300e6567e05a1d3545e765c9d773a4e1475157a24f17543ef0ce5cf98b6"
+    },
+    {
+      "name": "Restock.lua",
+      "hash": "c525d044f3e9f0bb6ae1547d4ead7bb1f2077a150a2388026c6a4b1a1c2e616a"
+    },
+    {
+      "name": "Bank.lua",
+      "hash": "99525c614e5f430f62ae4eb50daa6f7a65f72abdcf56865fe334d41d1b2d47a3"
+    },
+    {
+      "name": "Cubby.tga",
+      "hash": "689f02a912a95f3c40a9fbc78609d8458ed1f7eabf6024f0b033229918131a12"
+    }
+  ]
+}
