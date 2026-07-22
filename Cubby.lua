@@ -266,6 +266,11 @@ local function handleSlash(msg)
     -- if the user permanently disabled the tracker in Settings, they
     -- should turn it back on there.
     if ns.Tracker then ns.Tracker:Show() end
+  elseif msg == "debug" or msg == "debug buffs" then
+    -- Opens the Buff debug log window (same window as the Settings-tab
+    -- button). Snapshot: API detection, raw AuraData points, flattened
+    -- tuple positions 16..30, slot-map cross-check, and Status output.
+    if ns.UI and ns.UI.ShowBuffLog then ns.UI:ShowBuffLog() end
   elseif msg == "bank retry" or msg == "bank-retry" then
     -- After the user manually clears a wedged slot in the bank window,
     -- re-run the planner without needing to close+reopen the bank.

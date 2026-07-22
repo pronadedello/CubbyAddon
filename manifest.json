@@ -1,22 +1,26 @@
 {
   "name": "Cubby",
-  "version": "1.0.1-20260610213100",
+  "version": "1.0.7-20260722112318",
   "files": [
     {
       "name": "Cubby.toc",
-      "hash": "14d78364a5ca8f7cf05f3ee4a65243395db5ac4f3924421333308b99308c9c89"
+      "hash": "179686989877b82bd2db61d44a1edc5c66ad60c9ba7dc20a8e01761b0cc35864"
+    },
+    {
+      "name": "Build.lua",
+      "hash": "7613ae107899cb0037c930b7bdc978db3e1331c9db94fe60c6be6528c6132767"
     },
     {
       "name": "Cubby.lua",
-      "hash": "dd0fd0daa480101270017c885ffaf912b694355d432aa00b104bf722e7573620"
+      "hash": "8bece6075d5d5cf7865432dd85b582cd2f503e238be143be27e1b8667823999e"
     },
     {
       "name": "Buffs.lua",
-      "hash": "79bcf3e6ebd1042042f93e32473174050ed485c4e08b5650fa9e020f77433cab"
+      "hash": "4ecdcdea2dfd9a473f36dee0230deec81d430431d4a2ef0718a4e2cf70818bf4"
     },
     {
       "name": "UI.lua",
-      "hash": "3d4ccd9c2431048caca45eb87f1d548fa239481192419d615ca3cd3e989bffa1"
+      "hash": "ed82a0158ef257486d6b3a0f5aae209b79995c9a11d8247fa51230c24fba9820"
     },
     {
       "name": "Tracker.lua",

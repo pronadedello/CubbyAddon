@@ -19,19 +19,24 @@ local Buffs = ns.Buffs
 
 local CHRONOBOON_SPELL_ID = 349981
 
--- When slot 10 of UnitBuff('player', i) equals the chronoboon spell ID,
--- the same row's slots 17..24 and 29 carry the remaining seconds of each
--- stored buff. Mapping is KRC's reference.
+-- When the aura at index i has spellId = CHRONOBOON_SPELL_ID, the buff's
+-- SPELL_AURA_APPLIED points array carries the remaining seconds of each
+-- stored world buff. Our flattener (unpackAuraData below) unpacks that
+-- points array starting at position 16 of the tuple, so points[N] shows
+-- up at buf[15+N]. Empirically-verified layout — the Wowpedia UnitAura
+-- table says these live at positions 17..24, but a live capture on
+-- current clients puts Fengus at points[1] (buf[16]), not points[2],
+-- so the whole table is one position earlier than the wiki claims.
+-- Values are in seconds; 0 = "not stored".
 local BOON_SLOT_TO_SPELL_ID = {
-  [17] = 22817,  -- Fengus' Ferocity
-  [18] = 22818,  -- Mol'dar's Moxie
-  [19] = 22820,  -- Slip'kik's Savvy
-  [20] = 22888,  -- Rallying Cry of the Dragonslayer
-  [21] = 16609,  -- Warchief's Blessing (Horde)
-  [22] = 24425,  -- Spirit of Zandalar
-  [23] = 15366,  -- Songflower Serenade
-  [24] = 23768,  -- Sayge's / DMF
-  [29] = 460939, -- Warchief's Blessing (Alliance)
+  [16] = 22817,  -- Fengus' Ferocity
+  [17] = 22818,  -- Mol'dar's Moxie
+  [18] = 22820,  -- Slip'kik's Savvy
+  [19] = 22888,  -- Rallying Cry of the Dragonslayer
+  [20] = 16609,  -- Warchief's Blessing (Horde)
+  [21] = 24425,  -- Spirit of Zandalar
+  [22] = 15366,  -- Songflower Serenade
+  [23] = 23768,  -- Sayge's / DMF
 }
 
 local CLASS_CATEGORY = {
@@ -97,14 +102,151 @@ function Buffs:ClassHint(buff)
   return buff.classes
 end
 
+-- GetSpellTexture moved to C_Spell in Retail 11.0.0. The C_Spell version
+-- returns (iconID, originalIconID, ...) — we only want the first. The
+-- global still exists on older Classic flavors.
+local function spellTexture(sid)
+  if C_Spell and C_Spell.GetSpellTexture then
+    return (C_Spell.GetSpellTexture(sid))
+  end
+  if GetSpellTexture then return GetSpellTexture(sid) end
+end
+
 function Buffs:IconFor(buff)
-  if GetSpellTexture then
-    for _, sid in ipairs(buff.spell_ids) do
-      local tex = GetSpellTexture(sid)
-      if tex then return tex end
-    end
+  for _, sid in ipairs(buff.spell_ids) do
+    local tex = spellTexture(sid)
+    if tex then return tex end
   end
   return 'Interface\\Icons\\INV_Misc_QuestionMark'
+end
+
+-- UnitBuff was removed in Retail 11.0.2 (2024-08-13) and truncated on the
+-- newer Classic flavors — the vararg tail that carried Chronoboon's stored
+-- seconds is no longer returned. Replacement is
+-- C_UnitAuras.GetAuraDataByIndex(unit, i, "HELPFUL"), which returns an
+-- AuraData struct. We flatten it ourselves rather than lean on
+-- AuraUtil.UnpackAuraData — that helper isn't present on every flavor, and
+-- if it's missing we'd silently fall back to the truncated UnitBuff and
+-- lose the Chronoboon points. Layout mirrors the old UnitBuff tuple so
+-- buf[10]/buf[6]/buf[17..24]/buf[29] stay valid without touching the
+-- Chronoboon slot table.
+local function unpackAuraData(a)
+  if not a then return nil end
+  return a.name, a.icon, a.applications, a.dispelName, a.duration,
+         a.expirationTime, a.sourceUnit, a.isStealable,
+         a.nameplateShowPersonal, a.spellId, a.canApplyAura, a.isBossAura,
+         a.isFromPlayerOrPlayerPet, a.nameplateShowAll, a.timeMod,
+         unpack(a.points or {})
+end
+
+local function getBuff(unit, i)
+  if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+    return unpackAuraData(C_UnitAuras.GetAuraDataByIndex(unit, i, "HELPFUL"))
+  end
+  if UnitBuff then return UnitBuff(unit, i) end
+end
+
+-- Debug snapshot: which aura API is active, what does the Chronoboon aura
+-- currently contain, and what does Cubby's slot mapping think each
+-- position holds. Returns a big multi-line string suitable for pasting.
+-- UI:ShowBuffLog() renders it in a copyable window; the caller can also
+-- print it to chat line-by-line if that's more convenient.
+--
+-- Reads the raw AuraData.points array directly (bypassing our flattener)
+-- so a mismatch between "what points[N] actually holds" and "what Cubby
+-- reads at buf[15+N]" is visible in one glance.
+function Buffs:DebugDump()
+  local out = {}
+  local function w(s) out[#out+1] = s or "" end
+
+  local stamp = _G and _G.CubbyBuildStamp
+  if not stamp and ns and ns.BUILD_STAMP then stamp = ns.BUILD_STAMP end
+  w("=== Cubby buff debug" .. (stamp and (" — build " .. stamp) or "") .. " ===")
+  w("")
+  w("API detection:")
+  w(string.format("  C_UnitAuras.GetAuraDataByIndex = %s",
+    tostring(C_UnitAuras and C_UnitAuras.GetAuraDataByIndex ~= nil)))
+  w(string.format("  AuraUtil.UnpackAuraData        = %s",
+    tostring(AuraUtil and AuraUtil.UnpackAuraData ~= nil)))
+  w(string.format("  UnitBuff (legacy)              = %s",
+    tostring(UnitBuff ~= nil)))
+
+  local class = select(2, UnitClass('player')) or "?"
+  local name = UnitName('player') or "?"
+  w(string.format("Player: %s (%s)", name, class))
+  w("")
+
+  -- Locate Chronoboon among player buffs.
+  local boonIdx, boonBuf, boonRaw
+  for i = 1, 40 do
+    local buf = { getBuff('player', i) }
+    local spellId = buf[10]
+    if not spellId then break end
+    if spellId == CHRONOBOON_SPELL_ID then
+      boonIdx = i
+      boonBuf = buf
+      if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+        boonRaw = C_UnitAuras.GetAuraDataByIndex('player', i, "HELPFUL")
+      end
+      break
+    end
+  end
+
+  if not boonIdx then
+    w("Chronoboon aura: NOT FOUND on player.")
+    w("(pop the Chronoboon Displacer, then reopen this window.)")
+  else
+    w(string.format("Chronoboon aura: found at slot %d (spellId %d).",
+      boonIdx, CHRONOBOON_SPELL_ID))
+    w("")
+
+    if boonRaw then
+      local pts = boonRaw.points or {}
+      w(string.format("Raw AuraData.points (%d entries):", #pts))
+      for j = 1, #pts do
+        w(string.format("  points[%2d] = %s", j, tostring(pts[j])))
+      end
+    else
+      w("(no direct AuraData access — running the UnitBuff fallback path.)")
+    end
+    w("")
+
+    w("Flattened tuple positions 16..30 (Cubby's buf[N]):")
+    for slot = 16, 30 do
+      local v = boonBuf[slot]
+      if v ~= nil then
+        w(string.format("  buf[%2d] = %s", slot, tostring(v)))
+      end
+    end
+    w("")
+
+    w("Cubby's slot map — [pos] = spellId  → expected name — value now at buf[pos]:")
+    -- Iterate slot keys in numeric order for readable output.
+    local keys = {}
+    for k in pairs(BOON_SLOT_TO_SPELL_ID) do keys[#keys+1] = k end
+    table.sort(keys)
+    local nameBySpell = {}
+    for _, b in ipairs(ns.BUFF_CATALOG) do
+      for _, sid in ipairs(b.spell_ids) do nameBySpell[sid] = b.name end
+    end
+    for _, slot in ipairs(keys) do
+      local sid = BOON_SLOT_TO_SPELL_ID[slot]
+      local nm  = nameBySpell[sid] or "?"
+      local v   = boonBuf[slot]
+      w(string.format("  [%2d] = %-7d → %-35s value=%s",
+        slot, sid, nm, tostring(v)))
+    end
+  end
+  w("")
+
+  w("Current Buffs:Status() output:")
+  for _, r in ipairs(self:Status()) do
+    local remain = r.remain and string.format("%.1fm", r.remain) or "-"
+    w(string.format("  %-32s %-8s remain=%s",
+      r.buff.name, r.state, remain))
+  end
+
+  return table.concat(out, "\n")
 end
 
 -- Walk the player's auras once, returning { active = {[sid]=remainMin},
@@ -113,21 +255,16 @@ end
 local function scanPlayer()
   local active, stored = {}, {}
   for i = 1, 40 do
-    local buf = { UnitBuff('player', i) }
+    local buf = { getBuff('player', i) }
     local spellId = buf[10]
     if not spellId then break end
     if spellId == CHRONOBOON_SPELL_ID then
-      for slot = 17, 24 do
+      for slot = 16, 23 do
         local secs = buf[slot]
         if secs and secs > 0 then
           local sid = BOON_SLOT_TO_SPELL_ID[slot]
           if sid then stored[sid] = secs / 60 end
         end
-      end
-      local secs29 = buf[29]
-      if secs29 and secs29 > 0 then
-        local sid = BOON_SLOT_TO_SPELL_ID[29]
-        if sid then stored[sid] = secs29 / 60 end
       end
     else
       local exp = buf[6]

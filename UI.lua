@@ -633,6 +633,68 @@ function UI:ShowBankLog()
   f:Show()
 end
 
+-- Buff-debug log window. Clone of the bank log popup — different title,
+-- fresh snapshot per Refresh, no Clear (each open is a fresh snapshot).
+local buffLogFrame
+local function buildBuffLogFrame()
+  if buffLogFrame then return buffLogFrame end
+
+  buffLogFrame = CreateFrame("Frame", "CubbyBuffLogFrame", UIParent,
+    "BasicFrameTemplateWithInset")
+  buffLogFrame:SetSize(620, 460)
+  buffLogFrame:SetPoint("CENTER")
+  buffLogFrame:SetFrameStrata("DIALOG")
+  buffLogFrame:SetClampedToScreen(true)
+  buffLogFrame:SetMovable(true)
+  buffLogFrame:EnableMouse(true)
+  buffLogFrame:RegisterForDrag("LeftButton")
+  buffLogFrame:SetScript("OnDragStart", buffLogFrame.StartMoving)
+  buffLogFrame:SetScript("OnDragStop", buffLogFrame.StopMovingOrSizing)
+  tinsert(UISpecialFrames, "CubbyBuffLogFrame")
+
+  if buffLogFrame.TitleText then
+    buffLogFrame.TitleText:SetText("Cubby buff debug")
+  end
+
+  local hint = buffLogFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  hint:SetPoint("TOPLEFT", buffLogFrame, "TOPLEFT", 10, -28)
+  hint:SetText("Click in the text, Ctrl+A, Ctrl+C to copy.")
+
+  local scroll = CreateFrame("ScrollFrame", "CubbyBuffLogScroll", buffLogFrame,
+    "InputScrollFrameTemplate")
+  scroll:SetPoint("TOPLEFT",     buffLogFrame, "TOPLEFT",      10, -44)
+  scroll:SetPoint("BOTTOMRIGHT", buffLogFrame, "BOTTOMRIGHT", -32,  36)
+  if scroll.CharCount then scroll.CharCount:Hide() end
+
+  local edit = scroll.EditBox
+  edit:SetFontObject(ChatFontNormal)
+  edit:SetMaxLetters(0)
+  edit:SetWidth(scroll:GetWidth() - 18)
+  edit:SetAutoFocus(false)
+  edit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+
+  local refreshBtn = CreateFrame("Button", nil, buffLogFrame, "UIPanelButtonTemplate")
+  refreshBtn:SetSize(80, 22)
+  refreshBtn:SetPoint("BOTTOMRIGHT", buffLogFrame, "BOTTOMRIGHT", -10, 8)
+  refreshBtn:SetText("Refresh")
+  refreshBtn:SetScript("OnClick", function()
+    edit:SetText((ns.Buffs and ns.Buffs:DebugDump()) or "")
+    edit:SetCursorPosition(0)
+    edit:HighlightText(0, 0)
+  end)
+
+  buffLogFrame.edit = edit
+  return buffLogFrame
+end
+
+function UI:ShowBuffLog()
+  local f = buildBuffLogFrame()
+  f.edit:SetText((ns.Buffs and ns.Buffs:DebugDump()) or "")
+  f.edit:SetCursorPosition(0)
+  f.edit:HighlightText(0, 0)
+  f:Show()
+end
+
 -- Floating progress bar Bank updates while it's working. Lazy-built on
 -- first Show; pinned to top-center, draggable, doesn't save position so
 -- it's a transient indicator rather than a tracked widget.
@@ -731,7 +793,19 @@ function UI:Build()
   end)
   tinsert(UISpecialFrames, "CubbyFrame")
 
-  mainFrame.TitleText:SetText("Cubby")
+  -- Pull the version straight from Cubby.toc at runtime so bumping the
+  -- TOC is the single source of truth — no risk of the header drifting
+  -- out of sync with what the packager shipped. GetAddOnMetadata moved
+  -- to C_AddOns in Retail 10.x; shim it the same way as our other APIs.
+  local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+  local ver = getMeta and getMeta(ADDON_NAME, "Version") or nil
+  -- Append the per-regen build stamp (last 6 chars = UTC HHMMSS) so
+  -- successive dev pushes are visually distinguishable in the title bar
+  -- even though the TOC Version doesn't change between real releases.
+  local stamp = ns.BUILD_STAMP
+  local suffix = (stamp and #stamp >= 6) and (" |cff666666b" .. stamp:sub(-6) .. "|r") or ""
+  mainFrame.TitleText:SetText(
+    ver and ("Cubby  |cff888888v" .. ver .. "|r" .. suffix) or "Cubby")
 
   local refreshBtn = CreateFrame("Button", nil, mainFrame, "UIPanelButtonTemplate")
   refreshBtn:SetSize(60, 22)
@@ -1157,6 +1231,17 @@ function UI:Build()
   settingsPage.bankLogBtn:SetPoint("TOPLEFT", settingsPage.bankDebugCb, "BOTTOMLEFT", 4, -4)
   settingsPage.bankLogBtn:SetText("Show log")
   settingsPage.bankLogBtn:SetScript("OnClick", function() UI:ShowBankLog() end)
+
+  -- Buff-decode diagnostic. Opens a copyable snapshot of what Cubby's
+  -- Chronoboon decode currently sees — API detection, raw AuraData points,
+  -- flattened tuple, and slot-map cross-check. Paste the output when
+  -- reporting buff-detection weirdness.
+  settingsPage.buffDebugBtn = CreateFrame("Button", nil, settingsPage,
+    "UIPanelButtonTemplate")
+  settingsPage.buffDebugBtn:SetSize(110, 22)
+  settingsPage.buffDebugBtn:SetPoint("LEFT", settingsPage.bankLogBtn, "RIGHT", 6, 0)
+  settingsPage.buffDebugBtn:SetText("Buff debug")
+  settingsPage.buffDebugBtn:SetScript("OnClick", function() UI:ShowBuffLog() end)
 
   -- Tick interval (ms). Higher = more time for the client/server to settle
   -- between container actions, which tends to eliminate "Couldn't split"

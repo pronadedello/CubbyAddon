@@ -33,6 +33,7 @@ mkdir -p "$pkg_dir"
 # Keep this list in sync with the file list in Cubby.toc.
 files=(
   Cubby.toc
+  Build.lua
   Cubby.lua
   Buffs.lua
   UI.lua
